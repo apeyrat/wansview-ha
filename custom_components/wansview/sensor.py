@@ -62,7 +62,10 @@ def _build_sensors(
 
 
 class WansviewWifiSignalSensor(WansviewEntity, SensorEntity):
-    _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
+    # WiFi signal from the AJCloud API is a percentage (0-100), not dBm, so it
+    # must not use the signal_strength device_class (HA requires dBm/dB there).
+    # RSSI in dBm is exposed separately by WansviewWifiRssiSensor below.
+    _attr_device_class = None
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_entity_category = EntityCategory.DIAGNOSTIC
