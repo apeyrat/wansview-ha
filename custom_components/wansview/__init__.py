@@ -11,7 +11,9 @@ from .coordinator import WansviewDataUpdateCoordinator
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
+    Platform.BUTTON,
     Platform.CAMERA,
+    Platform.IMAGE,
     Platform.LIGHT,
     Platform.NUMBER,
     Platform.SELECT,

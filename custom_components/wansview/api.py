@@ -95,6 +95,10 @@ class WansviewDevice:
             return None
 
     @property
+    def snapshot_ts(self) -> str | None:
+        return self.base_info.get("snapshotTs") or None
+
+    @property
     def battery(self) -> int | None:
         val = self.base_info.get("batteryCapacity")
         try:
@@ -313,6 +317,69 @@ class WansviewClient:
         raw_devices = self._merge_device_list(data.get("result") or {})
         devices = [self._device_from_raw(item) for item in raw_devices]
         return await self._async_add_device_infos(devices)
+
+    async def async_snapshot(
+        self, device: WansviewDevice, tries: int = 2, wait: float = 30
+    ) -> None:
+        """Wake a battery camera and wait until the cloud holds a new snapshot."""
+        await self._ensure_auth()
+        base = device.base_info
+        mode = device.raw.get("deviceMode") or base.get("deviceMode") or ""
+        vendor = device.raw.get("vendorCode") or base.get("vendorCode") or ""
+        urls = await self._request(
+            "POST",
+            f"{self._bases['sdc']}/v1/dev-config",
+            signed=True,
+            payload={"data": {"devices": [{
+                "deviceId": device.device_id, "deviceMode": mode, "vendorCode": vendor,
+                "deviceType": str(device.raw.get("deviceType", "")),
+            }]}},
+        )
+        try:
+            keepalive = urls["result"]["devices"][0]["appKeepAliveUrl"].rstrip("/")
+        except (KeyError, IndexError, TypeError, AttributeError) as err:
+            raise WansviewError("No keep-alive URL for this camera") from err
+        before = device.snapshot_ts
+        # The camera goes back to sleep ~6 s after a capture; about one request in two got no snapshot.
+        for _ in range(tries):
+            try:
+                await self._wakeup_and_snap(device, keepalive, mode, vendor)
+            except WansviewError as err:
+                _LOGGER.debug("Snapshot request failed, retrying: %s", err)
+                continue
+            deadline = time.monotonic() + wait
+            while time.monotonic() < deadline:
+                await asyncio.sleep(2)
+                fresh = (await self._async_add_device_infos([device]))[0]
+                if fresh.snapshot_url and fresh.snapshot_ts != before:
+                    return
+        raise WansviewError(f"No new snapshot after {tries} requests")
+
+    async def _wakeup_and_snap(
+        self, device: WansviewDevice, keepalive: str, mode: str, vendor: str
+    ) -> None:
+        base = device.base_info
+        await self._request(
+            "POST",
+            f"{keepalive}/v1/wakeup",
+            signed=True,
+            device_id=device.device_id,
+            payload={"data": {
+                "deviceId": device.device_id, "deviceMode": mode, "vendorCode": vendor,
+                "timeZone": base.get("timeZone") or base.get("tzName") or "Europe/Paris",
+            }},
+        )
+        await self._request(
+            "POST",
+            f"{self._bases['cam_gw']}/v1/snapshot",
+            signed=True,
+            device_id=device.device_id,
+            base_url=device.gateway_url,
+            payload={"data": {
+                "deviceId": device.device_id, "agentName": DEFAULT_AGENT_NAME,
+                "agentToken": self._agent_token,
+            }},
+        )
 
     async def async_set_floodlight(self, device: WansviewDevice, enabled: bool) -> bool:
         await self._ensure_auth()
