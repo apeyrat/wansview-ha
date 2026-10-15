@@ -53,6 +53,7 @@ def _build_sensors(
     sensors: list[SensorEntity] = []
     if device.battery is not None:
         sensors.append(WansviewBatterySensor(coordinator, device))
+        sensors.append(WansviewSnapshotChangeSensor(coordinator, device))
     if device.wifi_signal is not None:
         sensors.append(WansviewWifiSignalSensor(coordinator, device))
     if device.wifi_rssi is not None:
@@ -80,6 +81,36 @@ class WansviewBatterySensor(WansviewEntity, SensorEntity):
     @property
     def native_value(self) -> int | None:
         return self._dev.battery
+
+
+class WansviewSnapshotChangeSensor(WansviewEntity, SensorEntity):
+    """Share of the frame that changed between the last two snapshots."""
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_icon = "mdi:image-search"
+
+    def __init__(
+        self,
+        coordinator: WansviewDataUpdateCoordinator,
+        device: WansviewDevice,
+    ) -> None:
+        super().__init__(coordinator, device)
+        self._attr_name = f"{device.name} Snapshot change"
+        self._attr_unique_id = f"{device.unique_id}_snapshot_change"
+
+    @property
+    def _snap(self) -> dict[str, Any]:
+        return self.coordinator.snapshots.get(self._dev.device_id, {})
+
+    @property
+    def native_value(self) -> float | None:
+        change = self._snap.get("change")
+        return round(change * 100, 1) if change is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"snapshot_ts": self._snap.get("ts"), "previous_ts": self._snap.get("prev_ts")}
 
 
 class WansviewWifiSignalSensor(WansviewEntity, SensorEntity):
