@@ -95,6 +95,14 @@ class WansviewDevice:
             return None
 
     @property
+    def battery(self) -> int | None:
+        val = self.base_info.get("batteryCapacity")
+        try:
+            return int(val) if val not in (None, "") else None
+        except (ValueError, TypeError):
+            return None
+
+    @property
     def floodlight_state(self) -> bool | None:
         toggle = self.raw.get("info", {}).get("floodlightConfig", {}).get("toggle")
         if toggle == "on":

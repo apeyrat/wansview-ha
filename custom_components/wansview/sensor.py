@@ -51,6 +51,8 @@ def _build_sensors(
     device: WansviewDevice,
 ) -> list[SensorEntity]:
     sensors: list[SensorEntity] = []
+    if device.battery is not None:
+        sensors.append(WansviewBatterySensor(coordinator, device))
     if device.wifi_signal is not None:
         sensors.append(WansviewWifiSignalSensor(coordinator, device))
     if device.wifi_rssi is not None:
@@ -59,6 +61,25 @@ def _build_sensors(
         if _value_at_path(device.raw.get("info", {}), path):
             sensors.append(WansviewInfoSensor(coordinator, device, name, path, icon))
     return sensors
+
+
+class WansviewBatterySensor(WansviewEntity, SensorEntity):
+    _attr_device_class = SensorDeviceClass.BATTERY
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = PERCENTAGE
+
+    def __init__(
+        self,
+        coordinator: WansviewDataUpdateCoordinator,
+        device: WansviewDevice,
+    ) -> None:
+        super().__init__(coordinator, device)
+        self._attr_name = f"{device.name} Battery"
+        self._attr_unique_id = f"{device.unique_id}_battery"
+
+    @property
+    def native_value(self) -> int | None:
+        return self._dev.battery
 
 
 class WansviewWifiSignalSensor(WansviewEntity, SensorEntity):
